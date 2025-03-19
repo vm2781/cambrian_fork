@@ -72,10 +72,6 @@ while [[ $# -gt 0 ]]; do
         gpus="$2"
         shift 2
         ;;
-    --constraint)
-        constraint="$2"
-        shift 2
-        ;;
     --cpus)
         cpus="$2"
         shift 2
@@ -84,6 +80,10 @@ while [[ $# -gt 0 ]]; do
         mem="$2"
         shift 2
         ;;
+    --constrant)
+	constraint="$2"
+	shift 2
+	;;
     --time)
         time="$2"
         shift 2
@@ -173,7 +173,7 @@ fi
 echo "Using slurm script $script"
 
 ################# Submit Job #################
-slurm_args="-J $benchmark"_"$(basename $ckpt)  --output=./logs/$benchmark/eval-%x-%j.out --error=./logs/$benchmark/eval-%x-%j.err --gres "gpu:$gpus" --constraint $constraint --mem $mem --cpus-per-task $cpus --time $time"
+slurm_args="-J $benchmark"_"$(basename $ckpt)  --output=./logs/$benchmark/eval-%x-%j.out --error=./logs/$benchmark/eval-%x-%j.err --gres "gpu:$gpus"  --mem $mem --cpus-per-task $cpus --time $time"
 
 # add dependency if nonempty
 if [[ -n "$dependency" ]]; then

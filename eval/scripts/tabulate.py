@@ -66,6 +66,7 @@ def tabulate_results(eval_dir, experiment_csv_fname, out_pivot_fname, out_all_re
     dfs = []
     for eval_name in evals_order:
         results_path = os.path.join(eval_dir, eval_name, experiment_csv_fname)
+        print("Searching for:", results_path)
         if not os.path.exists(results_path):
             print(f"Skipping {eval_name} as no results file found")
             continue

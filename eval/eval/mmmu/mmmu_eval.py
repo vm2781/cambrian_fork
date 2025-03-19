@@ -107,6 +107,7 @@ def eval_model(args):
     ans_file = open(chunk_file, "w")
 
     idx = -1
+    print("Expected length of files:", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
     for line in tqdm(questions, total=len(questions)):
@@ -133,6 +134,8 @@ def eval_model(args):
                 use_cache=True)
 
         outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+        print(output_ids)
+        print(outputs)
         ans_file.write(json.dumps({
             "model_id":model_name,
             "question_id": idx,

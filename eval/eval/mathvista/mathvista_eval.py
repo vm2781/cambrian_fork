@@ -121,10 +121,15 @@ def eval_model(args):
                 num_beams=args.num_beams,
                 max_new_tokens=args.max_new_tokens,
                 use_cache=True)
-
         outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+        print("Original Answer:", output_ids.cpu().numpy())
+        print("Extracted Answer:", outputs)
+        print("True Answer:", gt_answer)
+        print("------------------------")
         ans_file.write(json.dumps({"model_id":model_name,
                                    "question_id": idx,
+                                #    "answer_orig_np": output_ids.cpu().numpy(),
+                                #    "answer_orig_np[]": output_ids.cpu().numpy().tolist(),
                                    "answer": outputs,
                                    "gt_answer": gt_answer,
                                    "category": category,

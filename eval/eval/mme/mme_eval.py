@@ -55,7 +55,7 @@ def process(line, args, tokenizer, image_processor, model_config):
 
     input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-    return input_ids, image_tensor, image_size, prompt
+    return input_ids, image_tensor, image_size, prompt, image, qs
 
 
 def eval_model(args):
@@ -84,16 +84,19 @@ def eval_model(args):
     os.makedirs(os.path.dirname(chunk_file), exist_ok=True)
 
     idx = -1
+    print("EXPECTED LEVEL OF STUFF", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
 
+    example_num = 0
     with open(chunk_file, "w") as ans_file:
+        questions = questions.shuffle(seed=19)
         for line in tqdm(questions, total=len(questions)):
             idx = idx+1
             if idx<valid_chunk[0] or idx>valid_chunk[1]:
                 continue
 
-            input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config)
+            input_ids, image_tensor, image_sizes, prompt, img, qs = process(line, args, tokenizer, image_processor, model.config)
             gt_answer = line["answer"]
             category = line["category"]
             input_ids = input_ids.to(device='cuda', non_blocking=True)
@@ -120,6 +123,19 @@ def eval_model(args):
                 "model_id": model_name
             }) + "\n")
             ans_file.flush()
+
+            if example_num < 3:
+                img_dir = "examples/mme/reg_shu" + str(example_num) + ".png"
+                img.save(img_dir)
+                print("INDEX", example_num)
+                print("QUESTION", qs)
+                print("IMAGE", )
+                print("Y_HAT", outputs)
+                print("TRUE_Y", gt_answer)
+            else:
+                print("all is done")
+                break
+            example_num += 1
 
 
 if __name__ == "__main__":

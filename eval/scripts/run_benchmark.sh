@@ -117,6 +117,7 @@ fi
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     idx_file=./answers/answers_${model_basename}_${IDX}.jsonl
+    cat "$idx_file"
     cat "$idx_file" >> "$answers_file"
     rm "$idx_file"
 done

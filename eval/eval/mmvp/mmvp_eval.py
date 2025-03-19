@@ -123,6 +123,7 @@ def eval_model(args):
     ans_file = open(chunk_file, "w")
 
     idx = -1
+    print("Expected length of file", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
     for line in tqdm(questions, total=len(questions)):
