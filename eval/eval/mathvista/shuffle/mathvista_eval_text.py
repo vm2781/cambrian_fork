@@ -21,6 +21,112 @@ from PIL import Image
 import math
 
 
+demo_prompt = """
+Please read the following example. Then extract the answer from the model response and type it at the end of the prompt.
+
+Hint: Please answer the question requiring an integer answer and provide the final value, e.g., 1, 2, 3, at the end.
+Question: Which number is missing?
+
+Model response: The number missing in the sequence is 14.
+
+Extracted answer: 14
+
+Hint: Please answer the question requiring a floating-point number with one decimal place and provide the final value, e.g., 1.2, 1.3, 1.4, at the end.
+Question: What is the fraction of females facing the camera?
+
+Model response: The fraction of females facing the camera is 0.6, which means that six out of ten females in the group are facing the camera.
+
+Extracted answer: 0.6
+
+Hint: Please answer the question requiring a floating-point number with two decimal places and provide the final value, e.g., 1.23, 1.34, 1.45, at the end.
+Question: How much money does Luca need to buy a sour apple candy and a butterscotch candy? (Unit: $)
+
+Model response: Luca needs $1.45 to buy a sour apple candy and a butterscotch candy.
+
+Extracted answer: 1.45
+
+Hint: Please answer the question requiring a Python list as an answer and provide the final list, e.g., [1, 2, 3], [1.2, 1.3, 1.4], at the end.
+Question: Between which two years does the line  graph saw its maximum peak?
+
+Model response: The line graph saw its maximum peak between 2007 and 2008.
+
+Extracted answer: [2007, 2008]
+
+Hint: Please answer the question and provide the correct option letter, e.g., A, B, C, D, at the end.
+Question: What fraction of the shape is blue?\nChoices:\n(A) 3/11\n(B) 8/11\n(C) 6/11\n(D) 3/5
+
+Model response: The correct answer is (B) 8/11.
+
+Extracted answer: B
+"""
+
+def create_test_prompt(demo_prompt, query, response):
+    demo_prompt = demo_prompt.strip()
+    test_prompt = f"{query}\n\n{response}"
+    full_prompt = f"{demo_prompt}\n\n{test_prompt}\n\nExtracted answer: "
+    return full_prompt
+
+def extract_answer(model, response, problem, tokenizer, quick_extract=False):
+    question_type = problem['question_type']
+    answer_type = problem['answer_type']
+    choices = problem['choices']
+    query = problem['query']
+    pid = problem['pid']
+
+    if response == "":
+        return ""
+
+
+    if question_type == 'multi_choice':
+        if response in choices:
+            return response
+        elif "Answer:" in response:
+            return response.replace("Answer:", "").strip()
+
+    if answer_type == "integer":
+        try:
+            extraction = int(response)
+            return str(extraction)
+        except Exception as e:
+            pass
+
+    if answer_type == "float":
+        try:
+            extraction = str(float(response))
+            return extraction
+        except Exception as e:
+            pass
+
+    # quick extraction
+    # if quick_extract:
+    #     print("Quickly extracting answer...")
+    #     # The answer is "text". -> "text"
+    try:
+        if (response.index("(") == response.index(")") - 2):
+            extraction = response[response.index("(") + 1]
+            return extraction
+        
+        result = re.search(r'The answer is "(.*)"\.', response)
+        if result:
+            extraction = result.group(1)
+            return extraction
+        result = re.search(r'Answer:"(.*)"\.', response)
+        if result:
+            extraction = result.group(1)
+            return extraction.strip()
+        full_prompt = create_test_prompt(demo_prompt, query, response)
+        print("The full prompt inputed is:", full_prompt)
+        input_prompt = tokenizer_image_token(full_prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+        extraction = model.generate(input_prompt)
+        # real_output = extract_answer(model, extraction, line, tokenizer, quick_extract=True)
+        extraction = tokenizer.batch_decode(extraction, skip_special_tokens=True)[0].strip()
+        print("The extraction we decoded is ", extraction)
+        return extraction
+    except Exception as e:
+        print(f"Error in extracting answer for problem: {pid} with response: {response}")
+        print(e)
+    return ""
+
 def split_list(lst, n):
     """Split a list into n (roughly) equal-sized chunks"""
     chunk_size = math.ceil(lst / n)  # integer division
@@ -106,6 +212,8 @@ def eval_model(args):
             continue
         
         category = line["metadata"]["category"]
+        task     = line["metadata"]["task"]
+
         gt_answer = line["answer"]
         if line["question_type"] == "multi_choice":
             reverse_dict = {}
@@ -126,31 +234,43 @@ def eval_model(args):
                 use_cache=True)
 
         outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+        real_output = extract_answer(model, outputs, line, tokenizer, quick_extract=False)
+        # extraction = tokenizer.batch_decode(real_output, skip_special_tokens=True)[0].strip()
+        # print("Original Answer:", output_ids.cpu().numpy())
+        print("Question:", line["query"])
+        print("Direct from Model:", outputs)
+        print("Extracted Answer:", real_output)
+        # print("Extracted Answer3:", extraction)
+        print("True Answer:", gt_answer)
+        print("------------------------")
         ans_file.write(json.dumps({"model_id":model_name,
                                    "question_id": idx,
-                                   "answer": outputs,
+                                #    "answer_orig_np": output_ids.cpu().numpy(),
+                                #    "answer_orig_np[]": output_ids.cpu().numpy().tolist(),
+                                   "answer": real_output,
                                    "gt_answer": gt_answer,
                                    "category": category,
+                                   "task": task,
                                    "type": line["question_type"]}) + "\n")
-       print("example num:", example_num)
-        if example_num < 3:
-            try:
-                fig, ax = plt.subplots(figsize=(6, 8))
+    #    print("example num:", example_num)
+        # if example_num < 3:
+        #     try:
+        #         fig, ax = plt.subplots(figsize=(6, 8))
 
-                ax.axis("off")
-                ax.imshow(image)
+        #         ax.axis("off")
+        #         ax.imshow(image)
 
-                caption_text = "Text:", qs, "\nY_Hat:", outputs,"\nTrue_Y:",gt_answer
-                plt.figtext(0.5, 0.02, caption_text, wrap=True, horizontalalignment='center', fontsize=12)
+        #         caption_text = "Text:", qs, "\nY_Hat:", outputs,"\nTrue_Y:",gt_answer
+        #         plt.figtext(0.5, 0.02, caption_text, wrap=True, horizontalalignment='center', fontsize=12)
 
-                img_dir = "examples/mathvista/txt_nul" + str(example_num) + ".png"
-                plt.savefig(img_dir, bbox_inches='tight', dpi=300)
-            except Exception as e:
-                example_num -= 1
-        else:
-            print("all is done")
-            break
-        example_num += 1
+        #         img_dir = "examples/mathvista/txt_nul" + str(example_num) + ".png"
+        #         plt.savefig(img_dir, bbox_inches='tight', dpi=300)
+        #     except Exception as e:
+        #         example_num -= 1
+        # else:
+        #     print("all is done")
+        #     break
+        # example_num += 1
         ans_file.flush()
     ans_file.close()
 

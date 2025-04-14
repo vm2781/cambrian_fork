@@ -157,7 +157,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         model.resize_token_embeddings(len(tokenizer))
 
         vision_tower_aux_list = model.get_vision_tower_aux_list()
-
+        print("Vision List:", vision_tower_aux_list)
+        return
         for vision_tower_aux in vision_tower_aux_list:
             if not vision_tower_aux.is_loaded:
                 vision_tower_aux.load_model(device_map=device_map)

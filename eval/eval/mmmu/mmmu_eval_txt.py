@@ -158,8 +158,20 @@ def eval_model(args):
                 caption_text = "Text:", qs, "\nY_Hat:", outputs,"\nTrue_Y:",gt_answer
                 plt.figtext(0.5, 0.02, caption_text, wrap=True, horizontalalignment='center', fontsize=12)
 
-                img_dir = "examples/mmmu/txt_nul" + str(example_num) + ".png"
+                img_dir = "examples/mmmu/txt_" + str(example_num) + "_shuffle.png"
                 plt.savefig(img_dir, bbox_inches='tight', dpi=300)
+
+                fig2, ax2 = plt.subplots(figsize=(6, 8))
+
+                ax2.axis("off")
+                ax2.imshow(right_im)
+
+                caption_text2 = "Text:", qs,
+                plt.figtext(0.5, 0.02, caption_text2, wrap=True, horizontalalignment='center', fontsize=12)
+
+                img_dir2 = "examples/mmmu/txt_" + str(example_num) + "_real.png"
+                plt.savefig(img_dir2, bbox_inches='tight', dpi=300)
+
             except Exception as e:
                 example_num -= 1
         else:

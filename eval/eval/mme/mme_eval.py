@@ -6,6 +6,8 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import shortuuid
+import matplotlib.pyplot as plt
+
 
 from datasets import load_dataset
 from cambrian.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
@@ -124,18 +126,7 @@ def eval_model(args):
             }) + "\n")
             ans_file.flush()
 
-            if example_num < 3:
-                img_dir = "examples/mme/reg_shu" + str(example_num) + ".png"
-                img.save(img_dir)
-                print("INDEX", example_num)
-                print("QUESTION", qs)
-                print("IMAGE", )
-                print("Y_HAT", outputs)
-                print("TRUE_Y", gt_answer)
-            else:
-                print("all is done")
-                break
-            example_num += 1
+            
 
 
 if __name__ == "__main__":

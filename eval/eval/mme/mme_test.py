@@ -71,7 +71,8 @@ def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
     total_true_positives = 0.0
     total_count = 0.0
     total_score = 0.0
-
+    acc_total_total = 0.0
+    
     for category, metrics in category_metrics.items():
         acc_plus = metrics['acc+']
         true_positives = metrics['true_positives']
@@ -90,6 +91,7 @@ def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
     overall_metrics = {
         'total_score': total_score,
         'accuracy': 100.0 * (total_true_positives / total_count),
+        'accuracy_plus': 100.0 * (total_acc_plus / total_count),
         'Perception': 0.0,
         'Cognition': 0.0,
     }

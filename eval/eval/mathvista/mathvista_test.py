@@ -35,7 +35,7 @@ def is_number(s):
 def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
     model = ""
     categories = set()  # To store unique categories
-    category_metrics = {}  # To store metrics for each category
+    task_metrics = {}  # To store metrics for each task
 
     with open(jsonl_file, 'r') as file:
         output_file = os.path.expanduser(output_file)
@@ -44,30 +44,30 @@ def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
             for line in file:
                 data = json.loads(line)
                 model = data.get('model_id', '')
-                category = data.get('category', '')
-                categories.add(category) 
+                task = data.get('task', '')
+                categories.add(task) 
 
-                if category not in category_metrics:
-                    category_metrics[category] = {'matches': 0, 'total': 0}
+                if task not in task_metrics:
+                    task_metrics[task] = {'matches': 0, 'total': 0}
 
                 answer = data.get('answer', '').lower().strip()
                 if data.get('type', '') == "multiple-choice":
                     answer = answer.split('.')[0]
                 gt_answer = data.get('gt_answer', '').lower()
-                category_metrics[category]['total'] += 1
+                task_metrics[task]['total'] += 1
 
                 if answer == gt_answer:
-                    category_metrics[category]['matches'] += 1
+                    task_metrics[task]['matches'] += 1
                 elif is_number(gt_answer) and is_number(answer) and relaxed_accuracy(float(gt_answer), float(answer)):
-                    category_metrics[category]['matches'] += 1
+                    task_metrics[task]['matches'] += 1
                 else:
                     out_file.write(line)
 
-    category_scores = {}
+    task_scores = {}
     total_matches = 0
     total_count = 0
 
-    for category, metrics in category_metrics.items():
+    for task, metrics in task_metrics.items():
         matches = metrics['matches']
         total = metrics['total']
 
@@ -76,7 +76,7 @@ def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
 
         accuracy = (matches * 1.0 / total)
 
-        category_scores[category] = {'accurcay': accuracy, 'total': total}
+        task_scores[task] = {'accurcay': accuracy, 'total': total}
 
     overall_accuracy = (total_matches * 1.0 / total_count)
 
@@ -90,7 +90,7 @@ def compute_metrics(jsonl_file, output_file, csv_file, extra_outdir=None):
         "time": time_string,
     }
     combined_data.update(overall_metrics)
-    combined_data.update(category_scores)
+    combined_data.update(task_scores)
     add_data_to_csv(csv_file, combined_data)
     print(combined_data)
 

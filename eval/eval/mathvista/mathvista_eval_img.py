@@ -135,24 +135,24 @@ def eval_model(args):
                                    "category": category,
                                    "type": line["question_type"]}) + "\n")
         print("example num:", example_num)
-        if example_num < 3:
-            try:
-                fig, ax = plt.subplots(figsize=(6, 8))
+        # if example_num < 3:
+        #     try:
+        #         fig, ax = plt.subplots(figsize=(6, 8))
 
-                ax.axis("off")
-                ax.imshow(image)
+        #         ax.axis("off")
+        #         ax.imshow(image)
 
-                caption_text = "Text:", qs, "\nY_Hat:", outputs,"\nTrue_Y:",gt_answer
-                plt.figtext(0.5, 0.02, caption_text, wrap=True, horizontalalignment='center', fontsize=12)
+        #         caption_text = "Text:", qs, "\nY_Hat:", outputs,"\nTrue_Y:",gt_answer
+        #         plt.figtext(0.5, 0.02, caption_text, wrap=True, horizontalalignment='center', fontsize=12)
 
-                img_dir = "examples/mathvista/img_nul" + str(example_num) + ".png"
-                plt.savefig(img_dir, bbox_inches='tight', dpi=300)
-            except Exception as e:
-                example_num -= 1
-        else:
-            print("all is done")
-            break
-        example_num += 1
+        #         img_dir = "examples/mathvista/img_nul" + str(example_num) + ".png"
+        #         plt.savefig(img_dir, bbox_inches='tight', dpi=300)
+        #     except Exception as e:
+        #         example_num -= 1
+        # else:
+        #     print("all is done")
+        #     break
+        # example_num += 1
         ans_file.flush()
     ans_file.close()
 

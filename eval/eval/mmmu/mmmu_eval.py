@@ -7,6 +7,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import shortuuid
+import matplotlib.pyplot as plt
 
 from datasets import load_dataset, concatenate_datasets
 from cambrian.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
@@ -72,7 +73,7 @@ def process(line, args, tokenizer, image_processor, model_config):
 
     input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-    return input_ids, image_tensor, image_size, prompt
+    return input_ids, image_tensor, image_size, prompt, qs, image
 
 
 def eval_model(args):
@@ -110,12 +111,13 @@ def eval_model(args):
     print("Expected length of files:", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
+    example_num = 0
     for line in tqdm(questions, total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
         
-        input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config)
+        input_ids, image_tensor, image_sizes, prompt, qs, image = process(line, args, tokenizer, image_processor, model.config)
         if input_ids is None:
             continue
         gt_answer = line["answer"]
@@ -145,6 +147,7 @@ def eval_model(args):
             "category": category,
             "type": line["question_type"]
         }) + "\n")
+        
         ans_file.flush()
     ans_file.close()
 
