@@ -208,11 +208,13 @@ def eval_model(args):
     basename = os.path.basename(answers_file)
     basename = os.path.splitext(basename)[0]
     answers_dir = os.path.dirname(answers_file)
-    chunk_fname = f"{basename}_{args.chunk_idx}.jsonl"
-    chunk_file = os.path.join(answers_dir, chunk_fname)
-    os.makedirs(os.path.dirname(chunk_file), exist_ok=True)
-
-    ans_file = open(chunk_file, "w")
+    ans_file = [None] * 4
+    for i in range(4):
+        chunk_fname = f"{basename}_{args.chunk_idx}_{i}.jsonl"
+        chunk_file = os.path.join(answers_dir, chunk_fname)
+        os.makedirs(os.path.dirname(chunk_file), exist_ok=True)
+        ans_file[i] = open(chunk_file, "w")
+    # ans_file = open(chunk_file, "w")
 
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)

@@ -114,13 +114,17 @@ def extract_answer(model, response, problem, tokenizer, quick_extract=False):
         if result:
             extraction = result.group(1)
             return extraction.strip()
+        result = re.search(r'Answer is (.*)\.', a)
+        if result:
+            extraction = result.group(1)
+            return extraction.strip()[0]
         full_prompt = create_test_prompt(demo_prompt, query, response)
-        print("The full prompt inputed is:", full_prompt)
+        # print("The full prompt inputed is:", full_prompt)
         input_prompt = tokenizer_image_token(full_prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
         extraction = model.generate(input_prompt)
         # real_output = extract_answer(model, extraction, line, tokenizer, quick_extract=True)
         extraction = tokenizer.batch_decode(extraction, skip_special_tokens=True)[0].strip()
-        print("The extraction we decoded is ", extraction)
+        # print("The extraction we decoded is ", extraction)
         return extraction
     except Exception as e:
         print(f"Error in extracting answer for problem: {pid} with response: {response}")
@@ -140,7 +144,11 @@ def get_chunk(lst, n, k):
 
 
 def process(line, wrong_line, args, tokenizer, image_processor, model_config):
-    qs = wrong_line["query"]
+    qs = None
+    if line["question_type"] == "multi_choice":
+        qs =  wrong_line["query"][: wrong_line["query"].find("Choices") if wrong_line["query"].find("Choices") != -1 else len(wrong_line["query"])]+ line["query"][line["query"].find("Choices"):]
+    else:
+        qs = wrong_line["query"]
 
     if line["decoded_image"] is not None:
         if model_config.mm_use_im_start_end:
@@ -148,7 +156,7 @@ def process(line, wrong_line, args, tokenizer, image_processor, model_config):
         else:
             qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
 
-    if wrong_line["question_type"] == "multi_choice":
+    if line["question_type"] == "multi_choice":
         qs += f"\n{args.question_extension}"
     else:
         qs += f"\nAnswer the question using a single word or phrase."
@@ -236,7 +244,7 @@ def eval_model(args):
         real_output = extract_answer(model, outputs, wrong_line, tokenizer, quick_extract=False)
         # extraction = tokenizer.batch_decode(real_output, skip_special_tokens=True)[0].strip()
         # print("Original Answer:", output_ids.cpu().numpy())
-        print("Question:", line["query"])
+        print("Question Being Asked:", qs)
         print("Direct from Model:", outputs)
         print("Extracted Answer:", real_output)
         # print("Extracted Answer3:", extraction)

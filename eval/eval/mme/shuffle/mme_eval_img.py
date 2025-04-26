@@ -127,18 +127,18 @@ def eval_model(args):
             }) + "\n")
             ans_file.flush()
 
-            if example_num < 3:
-                img_dir = "examples/mme/img_shu" + str(example_num) + ".png"
-                img.save(img_dir)
-                print("INDEX", example_num)
-                print("QUESTION", qs)
-                print("IMAGE", )
-                print("Y_HAT", outputs)
-                print("TRUE_Y", gt_answer)
-            else:
-                print("all is done")
-                break
-            example_num += 1
+            # if example_num < 3:
+            #     img_dir = "examples/mme/img_shu" + str(example_num) + ".png"
+            #     img.save(img_dir)
+            #     print("INDEX", example_num)
+            #     print("QUESTION", qs)
+            #     print("IMAGE", )
+            #     print("Y_HAT", outputs)
+            #     print("TRUE_Y", gt_answer)
+            # else:
+            #     print("all is done")
+            #     break
+            # example_num += 1
 
 
 if __name__ == "__main__":
