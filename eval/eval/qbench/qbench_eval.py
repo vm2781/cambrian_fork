@@ -32,8 +32,9 @@ def get_chunk(lst, n, k):
     return chunks[k]
 
 
-def process(line, args, tokenizer, image_processor, model_config, images):
-    qs = line["question"] + " Options:"
+def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config, images):
+    qs = (wrong_line1["question"] if args.text_shuffle else line["question"]) + " Options:"
+
     options = line["candidates"]
     for i in range(len(options)):
         option = chr(ord('A')+i)
@@ -42,7 +43,9 @@ def process(line, args, tokenizer, image_processor, model_config, images):
 
     qs += f"\n{args.question_extension}"
 
-    image_path = images[line["img_path"]]
+    img_line = wrong_line2 if args.image_shuffle else line
+
+    image_path = images[img_line["img_path"]]
     input_image = Image.open(image_path).convert('RGB')
 
     if input_image is not None:
@@ -127,12 +130,15 @@ def eval_model(args):
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
-    for line in tqdm(questions, total=len(questions)):
+    shuffle_questions = random.sample(questions, len(questions)) #questions.shuffle(seed=17)
+    shuffle_questions2 = random.sample(questions, len(questions)) #questions.shuffle(seed=19)
+    
+    for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions, shuffle_questions2), total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
         
-        input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config, images)
+        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config, images)
         answer = line["correct_ans"] 
         options = line["candidates"]
         reverse_options = {}
@@ -181,6 +187,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=32)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text_shuffle", type=bool, default=False)
+    parser.add_argument("--image_shuffle", type=bool, default=False)
     args = parser.parse_args()
 
     eval_model(args)

@@ -1,24 +1,19 @@
 import argparse
-import os
-import json
-import random
 import torch
 import numpy as np
+import random
+import os
+import json
 from tqdm import tqdm
 import shortuuid
-import csv
-from PIL import Image
 
 from datasets import load_dataset
-from huggingface_hub import hf_hub_download
 from cambrian.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from cambrian.conversation import conv_templates, SeparatorStyle
+from cambrian.conversation import conv_templates
 from cambrian.model.builder import load_pretrained_model
-from cambrian.utils import disable_torch_init
 from cambrian.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
-from PIL import Image
 import math
 
 
@@ -27,55 +22,62 @@ def split_list(lst, n):
     chunk_size = math.ceil(lst / n)  # integer division
     return [[i,i+chunk_size-1] for i in range(0, lst, chunk_size)]
 
+
 def get_chunk(lst, n, k):
+    # get kth chunk out of n chunks cut from lst length
     chunks = split_list(lst, n)
     return chunks[k]
 
 
-def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config, images):
-    qs = (wrong_line1["question"] if args.text_shuffle else line["question"]) + " Options:"
+# Custom dataset class
+class CustomDataset(Dataset):
+    def __init__(self, args, questions, tokenizer, image_processor, model_config):
+        self.questions = questions
+        self.tokenizer = tokenizer
+        self.image_processor = image_processor
+        self.model_config = model_config
+        self.question_extension = args.question_extension
+        self.conv_mode = args.conv_mode
 
-    options = line["options"].split('(b)')
-    parts = [part.strip() for part in options]
-    parts = [part.replace('(a)', 'A.').replace('(b)', 'B.') for part in parts]
-    if len(parts) > 1:
-        # parts[1] = "(b) " + parts[1]
-        parts[1] = "B. " + parts[1]
-    for part in parts:
-        qs += f"\n{part}"
-    qs += f"\n{args.question_extension}"
-    print("BUILT UP QUERY LOOKING LIKE:", qs)
+    def __getitem__(self, index):
+        line = self.questions[index]
+        qs = line["question"]
+        keys = ["A", "B", "C", "D"]
+        for i in range(len(line["options"])):
+            option = line["options"][i]
+            key = keys[i]
+            qs += f"\n{key}. {option}"
 
-    image_id = wrong_line2["imageId"] if args.image_shuffle else line["imageId"]
-    input_image = images[image_id]
-    if input_image is not None:
-        if model_config.mm_use_im_start_end:
-            qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
+        qs += f"\n{self.question_extension}"
+        if line["image"] is not None:
+            if self.model_config.mm_use_im_start_end:
+                qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
+            else:
+                qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
+
+        conv = conv_templates[self.conv_mode].copy()
+        conv.append_message(conv.roles[0], qs)
+        conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
+
+        image_processor = self.image_processor
+        model_config = self.model_config
+
+        if line["image"] is None:
+            image = None
+            image_size = None
+            image_tensor = None
         else:
-            qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
+            image = line["image"].convert('RGB')
+            image_size = [image.size]
+            image_tensor = process_images([image], image_processor, model_config)
+        input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-    conv = conv_templates[args.conv_mode].copy()
-    conv.append_message(conv.roles[0], qs)
-    conv.append_message(conv.roles[1], None)
-    prompt = conv.get_prompt()
-    if input_image is None:
-        image = None
-        image_size = None
-        image_tensor = None
-    else:
-        image = input_image
-        image_size = [image.size]
-        image_tensor = process_images([image], image_processor, model_config)
-    
+        return input_ids, image_tensor, image_size, prompt
 
-    input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+    def __len__(self):
+        return len(self.questions)
 
-    return input_ids, image_tensor, image_size, prompt
-
-def give_options(input_string):
-    parts = input_string.split("(")
-    result = [part.split(")")[1].strip() for part in parts[1:]]
-    return result
 
 def eval_model(args):
     torch.manual_seed(args.seed)
@@ -90,27 +92,7 @@ def eval_model(args):
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
-    images = {}
-    for i in range(300):
-        file_path = hf_hub_download(repo_id="MMVP/MMVP", filename=f"{i+1}.jpg", subfolder="MMVP Images", repo_type="dataset")
-        images[i] = Image.open(file_path).convert('RGB')
-
-    questions = []
-    file_path = hf_hub_download(repo_id="MMVP/MMVP", filename="Questions.csv", repo_type="dataset")
-    with open(file_path, 'r') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            if row[0]=="lndex":
-                continue
-            if row[0]=="Index":
-                continue
-            questions.append({
-                "question": str(row[1]),
-                "imageId": int(row[0])-1,
-                "options": str(row[2]),
-                "text_options": give_options(str(row[2])),
-                "answer": str(row[3])
-            })
+    questions = load_dataset("lmms-lab/ai2d", split="test")
 
     answers_file = os.path.expanduser(args.answers_file)
     if not answers_file.endswith(".jsonl"):
@@ -124,22 +106,36 @@ def eval_model(args):
     os.makedirs(os.path.dirname(chunk_file), exist_ok=True)
 
     ans_file = open(chunk_file, "w")
+    dataset = CustomDataset(args, questions, tokenizer, image_processor, model.config)
 
     idx = -1
-    print("Expected length of file", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
     example_num = 0
-    shuffle_questions = random.sample(questions, len(questions)) #questions.shuffle(seed=17)
-    shuffle_questions2 = random.sample(questions, len(questions)) #questions.shuffle(seed=19)
-    for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions, shuffle_questions2), total=len(questions)):
+    for line in tqdm(questions, total=len(questions)):
+        wrong_idx_1 = random.randint(0, len(questions) - 1)
+        wrong_idx_2 = random.randint(0, len(questions) - 1)
+        while (wrong_idx_2 == wrong_idx_1):
+            random.randint(0, len(questions) - 1)
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
+        text_idx  = wrong_idx_1 if args.text_shuffle else idx
+        image_idx = wrong_idx_2 if args.image_shuffle else idx
+
+        _, _, _, real_prompt = dataset[idx]
+        _, _, _, fake_prompt = dataset[text_idx]
+        _, image_tensor, image_sizes, _ = dataset[image_idx]
         
-        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config, images)
+        prompt =  fake_prompt[: fake_prompt.find("A. ") if fake_prompt.find("A. ") != -1 else len(fake_prompt)]+ real_prompt[real_prompt.find("A. "):]
+        input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+
         gt_answer = line["answer"]
         input_ids = input_ids.to(device='cuda', non_blocking=True)
+        print("The prompt we working with is", prompt)
+        example_num += 1
+        # if example_num == 3:
+        #     break
         with torch.inference_mode():
             output_ids = model.generate(
                 input_ids,
@@ -159,21 +155,21 @@ def eval_model(args):
             "prompt": prompt,
             "answer": outputs,
             "gt_answer": gt_answer,
-            "model_id": model_name,
-            "text_options": line["text_options"]
+            "text_answer": line["options"][int(gt_answer)],
+            "model_id": model_name
         }) + "\n")
         ans_file.flush()
-        # if example_num == 3:
-        #     break
-        # example_num += 1
+        
     ans_file.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="liuhaotian/llava-v1.5-7b")
     parser.add_argument("--model_base", type=str, default=None)
-    parser.add_argument("--answers_file", type=str, default="./answers/answers.jsonl")
+    parser.add_argument("--answers_file", type=str, default="./answers/ai2d_answers.jsonl")
     parser.add_argument("--question_extension", type=str, default="Answer with the option's letter from the given choices directly.")
+    # parser.add_argument("--question_extension", type=str, default="---\nAnswer only with the character of the correct option. Choices: {'A', 'B', 'C', 'D'}")
     parser.add_argument("--conv_mode", type=str, default="vicuna_v1")
     parser.add_argument("--num_chunks", type=int, default=1)
     parser.add_argument("--chunk_idx", type=int, default=0)
@@ -187,4 +183,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval_model(args)
-

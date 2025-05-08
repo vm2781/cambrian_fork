@@ -35,8 +35,8 @@ def get_chunk(lst, n, k):
 TODO: why is eva clip still failing?
 """
 
-def process(line, args, tokenizer, image_processor, model_config):
-    qs = line["question"]
+def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config):
+    qs = wrong_line1["question"] if args.text_shuffle else line["question"]
 
     if line["image"] is not None:
         if model_config.mm_use_im_start_end:
@@ -50,12 +50,13 @@ def process(line, args, tokenizer, image_processor, model_config):
     conv.append_message(conv.roles[0], qs)
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
-    if line["image"] is None:
+    img_line = wrong_line2 if args.image_shuffle else line
+    if img_line["image"] is None:
         image = None
         image_size = None
         image_tensor = None
     else:
-        image = line["image"].convert('RGB')
+        image = img_line["image"].convert('RGB')
         image_size = [image.size]
         image_tensor = process_images([image], image_processor, model_config)
 
@@ -94,12 +95,14 @@ def eval_model(args):
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
-    for line in tqdm(questions, total=len(questions)):
+    shuffle_questions1 = questions.shuffle(seed=42)
+    shuffle_questions2 = questions.shuffle(seed=20)
+    for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions1, shuffle_questions2), total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
         
-        input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config)
+        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config)
         gt_answer = line["answer"]
         category = line["type"]
         input_ids = input_ids.to(device='cuda', non_blocking=True)
@@ -143,6 +146,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text_shuffle", type=bool, default=False)
+    parser.add_argument("--image_shuffle", type=bool, default=False)
     args = parser.parse_args()
 
     eval_model(args)

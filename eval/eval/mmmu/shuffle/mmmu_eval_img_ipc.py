@@ -61,6 +61,7 @@ def process(line, wrong_line, wrong_line_img, args, tokenizer, image_processor, 
     conv.append_message(conv.roles[0], qs)
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
+    image_sizes = [None] * 4
     if line["image_1"] is None:
         image = None
         image_size = None
@@ -132,7 +133,7 @@ def eval_model(args):
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
         
-        input_ids, image_tensor1, image_tensor2, image_tensor3, image_tensor4, image_sizes, prompt = process(line, wrong_line_img, args, tokenizer, image_processor, model.config)
+        input_ids, image_tensor1, image_tensor2, image_tensor3, image_tensor4, image_sizes, prompt = process(line, wrong_line, wrong_line_img, args, tokenizer, image_processor, model.config)
         if input_ids is None:
             continue
         gt_answer = line["answer"]

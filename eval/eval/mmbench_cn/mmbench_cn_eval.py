@@ -37,15 +37,17 @@ def get_chunk(lst, n, k):
     chunks = split_list(lst, n)
     return chunks[k]
 
-def process(line, args, tokenizer, image_processor, model_config):
+def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config):
+    txt_line = wrong_line1 if args.text_shuffle else line
     if line["hint"] != "nan":
-        qs = line["hint"] + "\n" + line["question"] + f" Options:"
+        qs = txt_line["hint"] + "\n" + txt_line["question"] + f" Options:"
     else:
-        qs = line["question"] + f" Options:"
+        qs = txt_line["question"] + f" Options:"
     for keys in ["A", "B", "C", "D"]:
         if line[keys] != "nan":
             qs += (f"\n{keys}. "+line[keys])
-    
+    # print("BUILD UP QUESTION", qs)
+
     qs += f"\n{args.question_extension}"
     if line["image"] is not None:
         if model_config.mm_use_im_start_end:
@@ -58,12 +60,13 @@ def process(line, args, tokenizer, image_processor, model_config):
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
     image_hash = ""
-    if line["image"] is None:
+    img_line = wrong_line2 if args.image_shuffle else line
+    if img_line["image"] is None:
         image = None
         image_size = None
         image_tensor = None
     else:
-        image = line["image"].convert('RGB')
+        image = img_line["image"].convert('RGB')
         image_hash = hash_image(copy.deepcopy(image))
         image_size = [image.size]
         image_tensor = process_images([image], image_processor, model_config)
@@ -102,14 +105,16 @@ def eval_model(args):
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
-    
+    # example_num = 0
+    shuffle_questions1 = questions.shuffle(seed=42)
+    shuffle_questions2 = questions.shuffle(seed=20)
     with open(chunk_file, "w") as ans_file:
-        for line in tqdm(questions, total=len(questions)):
+        for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions1, shuffle_questions2), total=len(questions)):
             idx = idx+1
             if idx<valid_chunk[0] or idx>valid_chunk[1]:
                 continue
             
-            input_ids, image_tensor, image_sizes, image_hash = process(line, args, tokenizer, image_processor, model.config)
+            input_ids, image_tensor, image_sizes, image_hash = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config)
             gt_answer = line["answer"]
             category = line["category"]
             # l2_category = line["l2-category"]
@@ -140,6 +145,9 @@ def eval_model(args):
                                     "model_id": model_name,
                                     "category": category}) + "\n")
             ans_file.flush()
+            # if example_num == 3:
+            #     break
+            # example_num += 1
 
 
 if __name__ == "__main__":
@@ -156,6 +164,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text_shuffle", type=bool, default=False)
+    parser.add_argument("--image_shuffle", type=bool, default=False)
     args = parser.parse_args()
 
     eval_model(args)

@@ -46,7 +46,7 @@ def process(line, wrong_line, wrong_line_img, args, tokenizer, image_processor, 
         qs += f"\n{chr(ord('A')+i)}. {option}"
     qs += f"\n{args.question_extension}"
     # else:
-    #     qs += f"\nAnswer the question using a single word or phrase."
+        # qs += f"\nAnswer the question using a single word or phrase."
 
     if line["image_1"] is not None:
         if model_config.mm_use_im_start_end:
@@ -98,7 +98,7 @@ def eval_model(args):
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
     
     validation_dataset = load_dataset("MMMU/MMMU_Pro", "standard (10 options)", split="test")
-    dev_dataset = load_dataset("lmms-lab/MMMU", split="dev")
+    # dev_dataset = load_dataset("lmms-lab/MMMU", split="dev")
     # questions = concatenate_datasets([validation_dataset, dev_dataset])
     questions = concatenate_datasets([validation_dataset])
     

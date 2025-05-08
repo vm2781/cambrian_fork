@@ -2,15 +2,13 @@ import argparse
 import os
 import json
 import random
+import re
 import torch
 import numpy as np
 from tqdm import tqdm
 import shortuuid
-import csv
-from PIL import Image
 
-from datasets import load_dataset
-from huggingface_hub import hf_hub_download
+from datasets import load_dataset, concatenate_datasets
 from cambrian.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from cambrian.conversation import conv_templates, SeparatorStyle
 from cambrian.model.builder import load_pretrained_model
@@ -27,28 +25,21 @@ def split_list(lst, n):
     chunk_size = math.ceil(lst / n)  # integer division
     return [[i,i+chunk_size-1] for i in range(0, lst, chunk_size)]
 
+
 def get_chunk(lst, n, k):
     chunks = split_list(lst, n)
     return chunks[k]
 
 
-def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config, images):
-    qs = (wrong_line1["question"] if args.text_shuffle else line["question"]) + " Options:"
-
-    options = line["options"].split('(b)')
-    parts = [part.strip() for part in options]
-    parts = [part.replace('(a)', 'A.').replace('(b)', 'B.') for part in parts]
-    if len(parts) > 1:
-        # parts[1] = "(b) " + parts[1]
-        parts[1] = "B. " + parts[1]
-    for part in parts:
-        qs += f"\n{part}"
+def process(line, wrong_line, wrong_line2, args, tokenizer, image_processor, model_config):
+    qs = None
+    if args.text_shuffle:
+        qs = wrong_line["prompt"]
+    else:
+        qs = line["prompt"]
     qs += f"\n{args.question_extension}"
-    print("BUILT UP QUERY LOOKING LIKE:", qs)
-
-    image_id = wrong_line2["imageId"] if args.image_shuffle else line["imageId"]
-    input_image = images[image_id]
-    if input_image is not None:
+    print("The build up question", str(qs))
+    if line["image"] is not None:
         if model_config.mm_use_im_start_end:
             qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
         else:
@@ -58,24 +49,20 @@ def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, mo
     conv.append_message(conv.roles[0], qs)
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
-    if input_image is None:
+
+    im_line = wrong_line2 if args.image_shuffle else line
+    if im_line["image"] is None:
         image = None
         image_size = None
         image_tensor = None
     else:
-        image = input_image
+        image = im_line["image"].convert('RGB')
         image_size = [image.size]
         image_tensor = process_images([image], image_processor, model_config)
-    
-
     input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
     return input_ids, image_tensor, image_size, prompt
 
-def give_options(input_string):
-    parts = input_string.split("(")
-    result = [part.split(")")[1].strip() for part in parts[1:]]
-    return result
 
 def eval_model(args):
     torch.manual_seed(args.seed)
@@ -90,27 +77,8 @@ def eval_model(args):
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
-    images = {}
-    for i in range(300):
-        file_path = hf_hub_download(repo_id="MMVP/MMVP", filename=f"{i+1}.jpg", subfolder="MMVP Images", repo_type="dataset")
-        images[i] = Image.open(file_path).convert('RGB')
-
-    questions = []
-    file_path = hf_hub_download(repo_id="MMVP/MMVP", filename="Questions.csv", repo_type="dataset")
-    with open(file_path, 'r') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            if row[0]=="lndex":
-                continue
-            if row[0]=="Index":
-                continue
-            questions.append({
-                "question": str(row[1]),
-                "imageId": int(row[0])-1,
-                "options": str(row[2]),
-                "text_options": give_options(str(row[2])),
-                "answer": str(row[3])
-            })
+    # SaiCharithaAkula21/benchmark_ade_filtered1
+    questions = load_dataset("SaiCharithaAkula21/benchmark_ade_manual", split="train")
 
     answers_file = os.path.expanduser(args.answers_file)
     if not answers_file.endswith(".jsonl"):
@@ -126,19 +94,17 @@ def eval_model(args):
     ans_file = open(chunk_file, "w")
 
     idx = -1
-    print("Expected length of file", len(questions))
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
-    example_num = 0
-    shuffle_questions = random.sample(questions, len(questions)) #questions.shuffle(seed=17)
-    shuffle_questions2 = random.sample(questions, len(questions)) #questions.shuffle(seed=19)
-    for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions, shuffle_questions2), total=len(questions)):
+    shuffle_questions = questions.shuffle(seed=42)
+    shuffle_questions2 = questions.shuffle(seed=20)
+    ex_num = 0
+    for line, wrong_line, wrong_line2 in tqdm(zip(questions, shuffle_questions, shuffle_questions2), total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
-        
-        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config, images)
-        gt_answer = line["answer"]
+    
+        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line, wrong_line2, args, tokenizer, image_processor, model.config)
         input_ids = input_ids.to(device='cuda', non_blocking=True)
         with torch.inference_mode():
             output_ids = model.generate(
@@ -155,18 +121,21 @@ def eval_model(args):
         outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
 
         ans_file.write(json.dumps({
-            "question_id": idx,
+            "questionId": idx,
+            "image": line["img_name"],
             "prompt": prompt,
             "answer": outputs,
-            "gt_answer": gt_answer,
-            "model_id": model_name,
-            "text_options": line["text_options"]
+            "gt_answer": line["answer"],
+            "category": line["sub_task"],
+            "options": line["choices"], 
+            "model_id": model_name
         }) + "\n")
         ans_file.flush()
-        # if example_num == 3:
+        ex_num += 1
+        # if ex_num == 3:
         #     break
-        # example_num += 1
     ans_file.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -187,4 +156,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval_model(args)
-

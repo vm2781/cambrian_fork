@@ -29,16 +29,20 @@ def get_chunk(lst, n, k):
     return chunks[k]
 
 
-def process(line, args, tokenizer, image_processor, model_config, images):
-    qs = line["question"] + f"\n{args.question_extension}"
-    image_id = line["imageId"]
+def process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model_config, images):
+    # qs = line["question"] + f"\n{args.question_extension}"
+    qs = wrong_line1["question"] if args.text_shuffle else line["question"]
+    qs += f"\n{args.question_extension}"
+
+    img_line = wrong_line2 if args.image_shuffle else line
+    image_id = img_line["imageId"]
     input_image = images[image_id]
     if input_image is not None:
         if model_config.mm_use_im_start_end:
             qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
         else:
             qs = DEFAULT_IMAGE_TOKEN + '\n' + qs
-
+    # print("What we looking at:", qs)
     conv = conv_templates[args.conv_mode].copy()
     conv.append_message(conv.roles[0], qs)
     conv.append_message(conv.roles[1], None)
@@ -94,12 +98,15 @@ def eval_model(args):
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(f"Valid chunk: {valid_chunk}")
-    for line in tqdm(questions, total=len(questions)):
+    # example_num = 0
+    shuffle_questions1 = questions.shuffle(seed=42)
+    shuffle_questions2 = questions.shuffle(seed=20)
+    for line, wrong_line1, wrong_line2 in tqdm(zip(questions, shuffle_questions1, shuffle_questions2), total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
 
-        input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config, images)
+        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line1, wrong_line2, args, tokenizer, image_processor, model.config, images)
         gt_answer = line["answer"]
         gt_full_answer = line["fullAnswer"]
         category = line["types"]
@@ -127,6 +134,9 @@ def eval_model(args):
             "model_id": model_name,
             "gt_full_answer": gt_full_answer
         }) + "\n")
+        # example_num += 1
+        # if example_num == 3:
+        #     break
         ans_file.flush()
     ans_file.close()
 
@@ -145,6 +155,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text_shuffle", type=bool, default=False)
+    parser.add_argument("--image_shuffle", type=bool, default=False)
     args = parser.parse_args()
 
     eval_model(args)
