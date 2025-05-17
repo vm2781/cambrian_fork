@@ -18,7 +18,7 @@ eval/**/answers/
 # Edit at https://www.toptal.com/developers/gitignore?templates=web,linux,macos,python,windows,data,jupyternotebooks
 
 ### Data ###
-*.csv
+# *.csv
 *.dat
 *.efx
 *.gbr
