@@ -8,7 +8,7 @@ eval/**/*.json
 eval/**/*.xlsx
 eval/**/*.txt
 eval/**/*.jsonl.bak.*
-eval/**/answers/
+# eval/**/answers/
 !requirements.txt
 
 *.code-workspace
