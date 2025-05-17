@@ -67,6 +67,7 @@ def eval_model(args):
     random.seed(args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    print("Here, text shuffling is", str(args.text_shuffle), "while image shuffling is", str(args.image_shuffle))
 
     # Model
     # disable_torch_init()  # DO NOT ENABLE THIS: KILLS PERFORMANCE
@@ -143,8 +144,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--text_shuffle", type=bool, default=False)
-    parser.add_argument("--image_shuffle", type=bool, default=False)
+    parser.add_argument("--text_shuffle", action='store_true', help="Enable text shuffle")
+    parser.add_argument("--image_shuffle", action='store_true', help="Enable image shuffle")
     args = parser.parse_args()
 
     eval_model(args)

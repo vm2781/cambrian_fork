@@ -31,10 +31,14 @@ def get_chunk(lst, n, k):
     return chunks[k]
 
 
-def process(line, args, tokenizer, image_processor, model_config):
-    qs = line["prompt"]
+def process(line, wrong_line, wrong_line2, args, tokenizer, image_processor, model_config):
+    qs = None
+    if args.text_shuffle:
+        qs = wrong_line["prompt"]
+    else:
+        qs = line["prompt"]
     qs += f"\n{args.question_extension}"
-
+    print("The build up question", str(qs))
     if line["image"] is not None:
         if model_config.mm_use_im_start_end:
             qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
@@ -45,12 +49,14 @@ def process(line, args, tokenizer, image_processor, model_config):
     conv.append_message(conv.roles[0], qs)
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
-    if line["image"] is None:
+
+    im_line = wrong_line2 if args.image_shuffle else line
+    if im_line["image"] is None:
         image = None
         image_size = None
         image_tensor = None
     else:
-        image = line["image"].convert('RGB')
+        image = im_line["image"].convert('RGB')
         image_size = [image.size]
         image_tensor = process_images([image], image_processor, model_config)
     input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
@@ -59,6 +65,7 @@ def process(line, args, tokenizer, image_processor, model_config):
 
 
 def eval_model(args):
+    print("Here, text shuffling is", str(args.text_shuffle), "while image shuffling is", str(args.image_shuffle))
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -90,12 +97,15 @@ def eval_model(args):
     idx = -1
     valid_chunk = get_chunk(len(questions), args.num_chunks, args.chunk_idx)
     print(valid_chunk)
-    for line in tqdm(questions, total=len(questions)):
+    shuffle_questions = questions.shuffle(seed=42)
+    shuffle_questions2 = questions.shuffle(seed=20)
+    ex_num = 0
+    for line, wrong_line, wrong_line2 in tqdm(zip(questions, shuffle_questions, shuffle_questions2), total=len(questions)):
         idx = idx+1
         if idx<valid_chunk[0] or idx>valid_chunk[1]:
             continue
     
-        input_ids, image_tensor, image_sizes, prompt = process(line, args, tokenizer, image_processor, model.config)
+        input_ids, image_tensor, image_sizes, prompt = process(line, wrong_line, wrong_line2, args, tokenizer, image_processor, model.config)
         input_ids = input_ids.to(device='cuda', non_blocking=True)
         with torch.inference_mode():
             output_ids = model.generate(
@@ -122,6 +132,9 @@ def eval_model(args):
             "model_id": model_name
         }) + "\n")
         ans_file.flush()
+        ex_num += 1
+        # if ex_num == 3:
+        #     break
     ans_file.close()
 
 
@@ -139,6 +152,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text_shuffle", action='store_true', help="Enable text shuffle")
+    parser.add_argument("--image_shuffle", action='store_true', help="Enable image shuffle")
     args = parser.parse_args()
 
     eval_model(args)
